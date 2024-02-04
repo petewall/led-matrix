@@ -1,0 +1,12 @@
+apiVersion: vendir.k14s.io/v1alpha1
+kind: Config
+directories:
+- path: helpers
+  contents:
+  - path: .
+    git:
+      url: https://github.com/ESPete/helpers
+      ref: origin/main
+    includePaths:
+    - buildFlagsToString.yaml
+    - jsonToIni.jq

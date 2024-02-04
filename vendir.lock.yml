@@ -1,0 +1,9 @@
+apiVersion: vendir.k14s.io/v1alpha1
+directories:
+- contents:
+  - git:
+      commitTitle: lib_deps must be a comma separated string...
+      sha: 2fb587adddd9079e533f01a8c4f05866b826729d
+    path: .
+  path: helpers
+kind: LockConfig
