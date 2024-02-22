@@ -25,7 +25,7 @@
 #define MAX_DEVICES	1
 
 #define CLK_PIN   D5
-#define DATA_PIN  D6
+#define DATA_PIN  D7
 #define CS_PIN    D8
 
 // SPI hardware interface
@@ -593,35 +593,6 @@ void setup()
 
 void loop()
 {
-#if 1
-  scrollText("Graphics");
-  zeroPointSet();
   rows();
   columns();
-  cross();
-  stripe();
-  checkboard();
-  bullseye();
-  bounce();
-  spiral();
-#endif
-
-#if 1
-  scrollText("Control");
-  intensity();
-  scanLimit();
-  blinking();
-#endif
-
-#if 1
-  scrollText("Transform");
-  transformation1();
-  transformation2();
-#endif
-
-#if 1
-  scrollText("Charset");
-  wrapText();
-  showCharset();
-#endif
 }
