@@ -1,13 +1,28 @@
 #include "Columns.h"
 #include "hardware.h"
 
-Columns::Columns(Display* display)
-: Visualization(display, 500), currentColumn(0)
+Columns::Columns(Display* display, unsigned long speed, bool bounce)
+: Visualization(display, speed), bounce(bounce), movingRight(true), currentColumn(0)
 {}
 
 bool Columns::run() {
-  this->render();
-  this->currentColumn = (this->currentColumn + 1) % LED_MATRIX_COLS;
+  render();
+  if (bounce) {
+    if (movingRight) {
+      ++currentColumn;
+      if (currentColumn == LED_MATRIX_COLS - 1) {
+        movingRight = false;
+      }
+    } else {
+      --currentColumn;
+      if (currentColumn == 0) {
+        movingRight = true;
+      }
+
+    }
+  } else {
+    currentColumn = (currentColumn + 1) % LED_MATRIX_COLS;
+  }
   return true;
 }
 

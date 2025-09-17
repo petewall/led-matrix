@@ -6,8 +6,9 @@
 class Visualization : public PeriodicAction {
 public:
   Visualization(Display* display, unsigned long interval);
-  virtual void render() = 0;
 
 protected:
+  virtual void render() = 0;
+
   Display* display;
 };

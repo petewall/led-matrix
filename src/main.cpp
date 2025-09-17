@@ -13,8 +13,8 @@
 #include "hardware.h"
 #include "LedMatrix.h"
 #include "Display.h"
-// #include "Columns.h"
-// #include "Off.h"
+#include "Columns.h"
+#include "Text.h"
 #include "Visualization.h"
 
 #include "WebServer.h"
@@ -69,7 +69,8 @@ void setup() {
 
   ledMatrix = new LedMatrix();
   display = new Display();
-  currentVisualization = NULL;
+  // currentVisualization = new Text("Grafana", display);
+  currentVisualization = new Columns(display, 50, true);
 
   connectToWiFi();
   webServer = new WebServer(display, ledMatrix);

@@ -5,12 +5,14 @@
 
 class Columns : public Visualization {
 public:
-  Columns(Display* display);
+  Columns(Display* display, unsigned long speed = 50, bool bounce = false);
   
 protected:
   bool run() override;
   void render() override;
 
 private:
+  bool bounce;
+  bool movingRight;
   uint8_t currentColumn;
 };

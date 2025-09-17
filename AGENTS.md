@@ -34,9 +34,3 @@
 - PRs: include a clear description, linked issues, and evidence of testing
   (serial logs, photos/video of the matrix, or screenshots). Describe
   hardware used and steps to reproduce. Note any user‑visible changes.
-
-## Security & Configuration Tips
-- Avoid committing secrets. Move Wi‑Fi creds from `include/hardware.h` to a local
-  `include/secrets.h` (git‑ignored) and `#include "secrets.h"` from code, or pass via
-  `platformio.ini` `build_flags` defines (e.g., `-D WIFI_SSID=...`).
-- Verify `monitor_speed` and board/port before uploading.
