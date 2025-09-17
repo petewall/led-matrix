@@ -2,10 +2,12 @@
 #include "LedMatrix.h"
 #include <LedControl.h>
 
+#define DEFAULT_BRIGHTNESS 1
+
 LedControl lc(PIN_DIN, PIN_CLK, PIN_CS, NUM_DEVICES);
 
 LedMatrix::LedMatrix()
-: currentIntensity(3)
+: currentIntensity(DEFAULT_BRIGHTNESS)
 {
   for (uint8_t i = 0; i < NUM_DEVICES; ++i) {
     lc.shutdown(i, false);
