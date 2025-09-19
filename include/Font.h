@@ -15,7 +15,7 @@ struct Glyph {
   uint8_t cols[WIDTH];
 };
 
-// Return glyph columns for a character. Lowercase supported.
+// Return glyph columns for a character.
 // Unknown characters map to '?'.
 inline Glyph glyphFor(char ch) {
   char c = ch;
@@ -77,3 +77,38 @@ inline Glyph glyphFor(char ch) {
 }
 
 } // namespace Font3x5
+
+// 4x6 font derived from 3x5 by simple scaling
+namespace Font4x6 {
+
+static constexpr uint8_t WIDTH = 4;
+static constexpr uint8_t HEIGHT = 6;
+static constexpr uint8_t SPACING = 1;
+
+struct Glyph {
+  uint8_t cols[WIDTH];
+};
+
+inline uint8_t scaleCol5to6(uint8_t col5) {
+  uint8_t col6 = 0;
+  for (uint8_t r = 0; r < 6; ++r) {
+    uint8_t src = (uint8_t)((r * 5) / 6); // 0,0,1,2,3,4
+    if ((col5 >> src) & 0x01) col6 |= (1u << r);
+  }
+  return col6;
+}
+
+inline Glyph glyphFor(char ch) {
+  auto g3 = Font3x5::glyphFor(ch);
+  Glyph g6;
+  uint8_t c0 = scaleCol5to6(g3.cols[0]);
+  uint8_t c1 = scaleCol5to6(g3.cols[1]);
+  uint8_t c2 = scaleCol5to6(g3.cols[2]);
+  g6.cols[0] = c0;
+  g6.cols[1] = c1;
+  g6.cols[2] = c1; // widen by duplicating middle column
+  g6.cols[3] = c2;
+  return g6;
+}
+
+} // namespace Font4x6

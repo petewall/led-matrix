@@ -69,7 +69,7 @@ void setup() {
 
   ledMatrix = new LedMatrix();
   display = new Display();
-  currentVisualization = new Text("Grafana!", display);
+  currentVisualization = new Text("I luv u!", display);
   // currentVisualization = new Columns(display, 50, true);
 
   connectToWiFi();
