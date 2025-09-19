@@ -3,273 +3,32 @@
 #include "LedMatrix.h"
 
 #include <ESPAsyncWebServer.h>
-#include <pgmspace.h>
-
-// Simple single-page UI to visualize and control the matrix
-// Served from PROGMEM to conserve RAM
-static const char INDEX_HTML[] PROGMEM = R"HTMLEND(
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>LED Matrix</title>
-    <style>
-      :root { --cell: 16px; --gap: 3px; --on: #21d07a; --off: #1b1f23; --grid: #2d333b; }
-      * { box-sizing: border-box; }
-      body { margin: 0; background: #0d1117; color: #c9d1d9;
-             font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-      header { padding: 12px 16px; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 12px; }
-      h1 { font-size: 16px; margin: 0; font-weight: 600; }
-      main { padding: 16px; }
-      #status { font-size: 12px; opacity: .8; }
-      #grid { display: grid; gap: var(--gap); background: #0d1117; padding: 8px; width: max-content;
-              border: 1px solid #30363d; border-radius: 6px; box-shadow: inset 0 0 0 1px #161b22; }
-      .cell { width: var(--cell); height: var(--cell); background: var(--off); border-radius: 3px;
-              box-shadow: 0 0 0 1px var(--grid) inset; cursor: pointer; transition: background .05s ease; }
-      .cell.on { background: var(--on); }
-      #grid, .cell { user-select: none; touch-action: none; }
-      .row { display: contents; }
-      button { background: #238636; color: #fff; border: 1px solid #2ea043; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
-      button:disabled { opacity: .6; cursor: default; }
-      .toolbar { display: flex; gap: 8px; align-items: center; }
-      .spacer { flex: 1; }
-    </style>
-  </head>
-  <body>
-    <header>
-      <h1>LED Matrix</h1>
-      <div id="status">Connecting…</div>
-      <div class="spacer"></div>
-      <div class="toolbar">
-        <button id="refresh">Refresh</button>
-        <button id="clear" title="Turn off all pixels">Clear</button>
-        <button id="fill" title="Turn on all pixels">Fill</button>
-        <label style="font-size:12px;display:flex;align-items:center;gap:6px;">
-          <input id="auto" type="checkbox" checked /> Auto-refresh
-        </label>
-        <label style="font-size:12px;display:flex;align-items:center;gap:8px;">
-          <span style="opacity:.8;">Brightness</span>
-          <input id="brightness" type="range" min="0" max="15" value="3" />
-          <span id="bval">3</span>
-        </label>
-      </div>
-    </header>
-    <main>
-      <div id="grid"></div>
-    </main>
-    <script>
-      let cols = 0, rows = 0;
-      let fb = [];
-      let timer = null;
-      let isDrawing = false;
-      let drawOp = 'paint'; // 'paint' | 'erase'
-      let hasMoved = false;
-      let startX = 0, startY = 0;
-      let drawn;
-      let suppressNextClick = false; // used to suppress shift-click default click
-
-      const $ = (s) => document.querySelector(s);
-      const grid = $("#grid");
-      const statusEl = $("#status");
-
-      function setStatus(text) { statusEl.textContent = text; }
-
-      async function getDisplay() {
-        const r = await fetch('/display', { cache: 'no-store' });
-        if (!r.ok) throw new Error('Failed to fetch display');
-        return r.json();
-      }
-
-      function cellOn(x, y) {
-        return ((fb[y] >>> x) & 1) === 1;
-      }
-
-      function setCell(x, y, on) {
-        const mask = (1 << x);
-        if (on) fb[y] |= mask; else fb[y] &= ~mask;
-      }
-
-      async function writePixel(x, y, on) {
-        setCell(x, y, on);
-        renderCells();
-        try {
-          const url = `/display?x=${x}&y=${y}&on=${on ? 1 : 0}`;
-          const r = await fetch(url, { method: 'PUT' });
-          if (!r.ok) throw new Error('PUT failed');
-        } catch (e) {
-          await refresh();
-        }
-      }
-
-      async function togglePixel(x, y) {
-        const on = !cellOn(x, y);
-        await writePixel(x, y, on);
-      }
-
-      function renderSkeleton() {
-        grid.style.gridTemplateColumns = `repeat(${cols}, var(--cell))`;
-        grid.innerHTML = '';
-        for (let y = 0; y < rows; y++) {
-          for (let x = 0; x < cols; x++) {
-            const d = document.createElement('div');
-            d.className = 'cell';
-            d.dataset.x = x;
-            d.dataset.y = y;
-            d.addEventListener('click', (e) => {
-              if (suppressNextClick) { suppressNextClick = false; return; }
-              togglePixel(x, y);
-            });
-            d.addEventListener('pointerdown', (e) => {
-              isDrawing = true; hasMoved = false; startX = x; startY = y; drawn = new Set();
-              drawOp = e.shiftKey ? 'erase' : 'paint';
-              // For shift-click without movement, we'll erase on pointerup and suppress the click
-              if (e.shiftKey) suppressNextClick = true;
-            });
-            d.addEventListener('pointerenter', async (e) => {
-              if (!isDrawing) return;
-              hasMoved = true;
-              const key = y * cols + x;
-              if (drawn.has(key)) return;
-              drawn.add(key);
-              await writePixel(x, y, drawOp === 'paint');
-            });
-            grid.appendChild(d);
-          }
-        }
-      }
-
-      function renderCells() {
-        // Update classes without rebuilding DOM
-        const children = grid.children;
-        let i = 0;
-        for (let y = 0; y < rows; y++) {
-          for (let x = 0; x < cols; x++, i++) {
-            const on = cellOn(x, y);
-            const el = children[i];
-            if (!el) continue;
-            if (on) el.classList.add('on'); else el.classList.remove('on');
-          }
-        }
-      }
-
-      async function refresh() {
-        try {
-          setStatus('Updating…');
-          const data = await getDisplay();
-          let rebuild = false;
-          if (data.columns !== cols || data.rows !== rows) {
-            cols = data.columns; rows = data.rows; rebuild = true;
-          }
-          fb = data.framebuffer || [];
-          if (rebuild || grid.childElementCount !== cols * rows) renderSkeleton();
-          renderCells();
-          setStatus(`${cols} × ${rows}`);
-        } catch (e) {
-          setStatus('Disconnected');
-        }
-      }
-
-      function startAutoRefresh() {
-        stopAutoRefresh();
-        timer = setInterval(refresh, 1000);
-      }
-      function stopAutoRefresh() { if (timer) { clearInterval(timer); timer = null; } }
-
-      $('#refresh').addEventListener('click', refresh);
-      function endDraw(e) {
-        if (!isDrawing) return;
-        const wasShift = (e && e.shiftKey) || (drawOp === 'erase');
-        if (!hasMoved) {
-          if (wasShift) {
-            // Shift-click erase
-            suppressNextClick = true;
-            writePixel(startX, startY, false);
-          } else {
-            // Plain click toggles (handled by click handler)
-          }
-        }
-        isDrawing = false;
-        hasMoved = false;
-        drawn = null;
-      }
-      window.addEventListener('pointerup', endDraw);
-      window.addEventListener('pointercancel', endDraw);
-      async function clearAll() {
-        try {
-          setStatus('Clearing…');
-          const r = await fetch('/display', { method: 'DELETE' });
-          if (!r.ok) throw new Error('DELETE failed');
-          fb = Array.from({ length: rows }, () => 0);
-          renderCells();
-          setStatus(`${cols} × ${rows}`);
-        } catch (e) {
-          await refresh();
-        }
-      }
-      $('#clear').addEventListener('click', clearAll);
-      // Fill all pixels ON
-      async function fillAll() {
-        try {
-          setStatus('Filling…');
-          const r = await fetch('/display/fill?on=1', { method: 'POST' });
-          if (!r.ok) throw new Error('POST failed');
-          fb = Array.from({ length: rows }, () => (cols >= 32 ? 0xFFFFFFFF : ((1 << cols) - 1)));
-          renderCells();
-          setStatus(`${cols} × ${rows}`);
-        } catch (e) {
-          await refresh();
-        }
-      }
-      $('#fill').addEventListener('click', fillAll);
-      $('#auto').addEventListener('change', (e) => {
-        if (e.target.checked) startAutoRefresh(); else stopAutoRefresh();
-      });
-      // Brightness control
-      async function fetchBrightness() {
-        try {
-          const r = await fetch('/brightness', { cache: 'no-store' });
-          if (!r.ok) return;
-          const j = await r.json();
-          const v = Math.max(0, Math.min(15, j.brightness|0));
-          const slider = document.getElementById('brightness');
-          const bval = document.getElementById('bval');
-          slider.value = v; bval.textContent = v;
-        } catch {}
-      }
-      let bTimer = null;
-      function scheduleSetBrightness(v) {
-        const bval = document.getElementById('bval');
-        bval.textContent = v;
-        if (bTimer) clearTimeout(bTimer);
-        bTimer = setTimeout(async () => {
-          try {
-            await fetch(`/brightness?value=${v}`, { method: 'PUT' });
-          } catch {}
-        }, 150);
-      }
-      document.addEventListener('input', (e) => {
-        if (e.target && e.target.id === 'brightness') {
-          scheduleSetBrightness(e.target.value);
-        }
-      });
-
-      refresh();
-      fetchBrightness();
-      startAutoRefresh();
-    </script>
-  </body>
-</html>
-)HTMLEND";
+#if defined(ESP8266)
+#include <LittleFS.h>
+#elif defined(ESP32)
+#include <LittleFS.h>
+#endif
 
 WebServer::WebServer(Display* display, LedMatrix* ledMatrix)
   : display(display), ledMatrix(ledMatrix)
 {
   asyncWebServer = new AsyncWebServer(80);
+  // Mount LittleFS and serve static files from it (default to index.html)
+#if defined(ESP8266)
+  if (!LittleFS.begin()) {
+    Serial.println("LittleFS mount failed");
+  } else {
+    Serial.println("LittleFS mounted");
+  }
+#elif defined(ESP32)
+  if (!LittleFS.begin(true)) {
+    Serial.println("LittleFS mount failed");
+  } else {
+    Serial.println("LittleFS mounted");
+  }
+#endif
 
-  asyncWebServer->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-    request->send_P(200, "text/html", INDEX_HTML);
-  });
+  asyncWebServer->serveStatic("/", LittleFS, "/").setDefaultFile("index.html");
 
   asyncWebServer->on("/hardware.json", HTTP_GET, [](AsyncWebServerRequest *request) {
     String response = "{";
