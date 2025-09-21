@@ -1,0 +1,30 @@
+{
+  "name": "led-matrix",
+  "version": "1.0.0",
+  "description": "This project is a 32x32 LED matrix",
+  "homepage": "https://github.com/petewall/led-matrix#readme",
+  "bugs": {
+    "url": "https://github.com/petewall/led-matrix/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/petewall/led-matrix.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.js",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "devDependencies": {
+    "@linthtml/linthtml": "^0.10.2",
+    "stylelint": "^16.24.0",
+    "stylelint-config-standard": "^39.0.0"
+  },
+  "dependencies": {}
+}

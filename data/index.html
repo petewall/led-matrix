@@ -4,27 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>LED Matrix</title>
-    <style>
-      :root { --cell: 16px; --gap: 3px; --on: #21d07a; --off: #1b1f23; --grid: #2d333b; }
-      * { box-sizing: border-box; }
-      body { margin: 0; background: #0d1117; color: #c9d1d9;
-             font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
-      header { padding: 12px 16px; border-bottom: 1px solid #30363d; display: flex; align-items: center; gap: 12px; }
-      h1 { font-size: 16px; margin: 0; font-weight: 600; }
-      main { padding: 16px; }
-      #status { font-size: 12px; opacity: .8; }
-      #grid { display: grid; gap: var(--gap); background: #0d1117; padding: 8px; width: max-content;
-              border: 1px solid #30363d; border-radius: 6px; box-shadow: inset 0 0 0 1px #161b22; }
-      .cell { width: var(--cell); height: var(--cell); background: var(--off); border-radius: 3px;
-              box-shadow: 0 0 0 1px var(--grid) inset; cursor: pointer; transition: background .05s ease; }
-      .cell.on { background: var(--on); }
-      #grid, .cell { user-select: none; touch-action: none; }
-      .row { display: contents; }
-      button { background: #238636; color: #fff; border: 1px solid #2ea043; padding: 6px 10px; border-radius: 6px; cursor: pointer; }
-      button:disabled { opacity: .6; cursor: default; }
-      .toolbar { display: flex; gap: 8px; align-items: center; }
-      .spacer { flex: 1; }
-    </style>
+    <link rel="stylesheet" href="/style.css" />
   </head>
   <body>
     <header>
@@ -46,6 +26,10 @@
       </div>
     </header>
     <main>
+      <aside id="palette">
+        <h2>Visualizations</h2>
+        <div id="visualizations"></div>
+      </aside>
       <div id="grid"></div>
     </main>
     <script>
@@ -58,12 +42,74 @@
       let startX = 0, startY = 0;
       let drawn;
       let suppressNextClick = false; // used to suppress shift-click default click
+      let visualizations = [];
+      let currentVisualizationId = '';
+      let switchingVisualization = false;
 
       const $ = (s) => document.querySelector(s);
       const grid = $("#grid");
       const statusEl = $("#status");
+      const visualizationList = $("#visualizations");
 
       function setStatus(text) { statusEl.textContent = text; }
+
+      function renderVisualizationPalette() {
+        if (!visualizationList) return;
+        visualizationList.innerHTML = '';
+        visualizations.forEach((viz) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.className = 'palette-button';
+          button.dataset.id = viz.id;
+          button.textContent = viz.label || viz.id;
+          if (viz.id === currentVisualizationId) {
+            button.classList.add('selected');
+          }
+          if (switchingVisualization) {
+            button.disabled = true;
+            if (viz.id === currentVisualizationId) {
+              button.disabled = false;
+            }
+          }
+          button.addEventListener('click', () => selectVisualization(viz.id));
+          visualizationList.appendChild(button);
+        });
+      }
+
+      async function loadVisualizations() {
+        if (!visualizationList) return;
+        try {
+          const r = await fetch('/visualizations', { cache: 'no-store' });
+          if (!r.ok) throw new Error('failed');
+          const data = await r.json();
+          visualizations = Array.isArray(data.visualizations) ? data.visualizations : [];
+          currentVisualizationId = data.current || '';
+          renderVisualizationPalette();
+        } catch (e) {
+          // ignore failures; palette will remain unchanged
+        }
+      }
+
+      async function selectVisualization(id) {
+        if (!id || id === currentVisualizationId || switchingVisualization) return;
+        if (!visualizationList) return;
+        switchingVisualization = true;
+        renderVisualizationPalette();
+        try {
+          setStatus(`Loading ${id}…`);
+          const r = await fetch(`/visualizations?id=${encodeURIComponent(id)}`, { method: 'POST' });
+          if (!r.ok) throw new Error('failed');
+          const data = await r.json();
+          currentVisualizationId = data.current || id;
+          await refresh();
+        } catch (e) {
+          setStatus('Failed to change visualization');
+          await loadVisualizations();
+        } finally {
+          switchingVisualization = false;
+          renderVisualizationPalette();
+        }
+      }
 
       async function getDisplay() {
         const r = await fetch('/display', { cache: 'no-store' });
@@ -244,10 +290,10 @@
         }
       });
 
+      loadVisualizations();
       refresh();
       fetchBrightness();
       startAutoRefresh();
     </script>
   </body>
   </html>
-

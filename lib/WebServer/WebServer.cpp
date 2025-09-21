@@ -9,8 +9,19 @@
 #include <LittleFS.h>
 #endif
 
-WebServer::WebServer(Display* display, LedMatrix* ledMatrix)
-  : display(display), ledMatrix(ledMatrix)
+WebServer::WebServer(Display* display,
+                     LedMatrix* ledMatrix,
+                     const VisualizationDefinition* visualizationDefinitions,
+                     size_t visualizationDefinitionCount,
+                     VisualizationSetter setVisualizationCallback,
+                     VisualizationGetter getCurrentVisualizationIdCallback)
+  : display(display),
+    ledMatrix(ledMatrix),
+    asyncWebServer(nullptr),
+    visualizationDefinitions(visualizationDefinitions),
+    visualizationDefinitionCount(visualizationDefinitionCount),
+    setVisualizationCallback(setVisualizationCallback),
+    getCurrentVisualizationIdCallback(getCurrentVisualizationIdCallback)
 {
   asyncWebServer = new AsyncWebServer(80);
   // Mount LittleFS and serve static files from it (default to index.html)
@@ -117,6 +128,63 @@ WebServer::WebServer(Display* display, LedMatrix* ledMatrix)
   asyncWebServer->on("/display", HTTP_DELETE, [this](AsyncWebServerRequest *request) {
     this->display->clear();
     request->send(200, "application/json", "{\"cleared\":true}");
+  });
+
+  asyncWebServer->on("/visualizations", HTTP_GET, [this](AsyncWebServerRequest *request) {
+    String json = "{";
+    json += "\"current\":";
+    json += "\"";
+    if (this->getCurrentVisualizationIdCallback) {
+      json += this->getCurrentVisualizationIdCallback();
+    }
+    json += "\",";
+    json += "\"visualizations\":[";
+    for (size_t i = 0; i < this->visualizationDefinitionCount; i++) {
+      if (i > 0) {
+        json += ",";
+      }
+      json += "{";
+      json += "\"id\":\"";
+      json += this->visualizationDefinitions[i].id;
+      json += "\",\"label\":\"";
+      json += this->visualizationDefinitions[i].label;
+      json += "\"}";
+    }
+    json += "]}";
+    request->send(200, "application/json", json);
+  });
+
+  asyncWebServer->on("/visualizations", HTTP_POST, [this](AsyncWebServerRequest *request) {
+    const AsyncWebParameter* pid = nullptr;
+    if (request->hasParam("id")) {
+      pid = request->getParam("id");
+    } else if (request->hasParam("id", true)) {
+      pid = request->getParam("id", true);
+    }
+
+    if (!pid) {
+      request->send(400, "application/json", "{\"error\":\"id is required\"}");
+      return;
+    }
+
+    String id = pid->value();
+    bool success = false;
+    if (this->setVisualizationCallback) {
+      success = this->setVisualizationCallback(id.c_str());
+    }
+
+    if (!success) {
+      request->send(404, "application/json", "{\"error\":\"visualization not found\"}");
+      return;
+    }
+
+    String json = "{";
+    json += "\"current\":\"";
+    if (this->getCurrentVisualizationIdCallback) {
+      json += this->getCurrentVisualizationIdCallback();
+    }
+    json += "\"}";
+    request->send(200, "application/json", json);
   });
 
   // Brightness endpoints

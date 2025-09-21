@@ -13,9 +13,11 @@
 #include "hardware.h"
 #include "LedMatrix.h"
 #include "Display.h"
+#include "Clock.h"
 #include "Columns.h"
 #include "Text.h"
 #include "Visualization.h"
+#include "Visualizations.h"
 
 #include "WebServer.h"
 
@@ -24,7 +26,50 @@ LedMatrix* ledMatrix;
 Display* display;
 Visualization* currentVisualization;
 
+const VisualizationDefinition* visualizationDefinitions = nullptr;
+size_t visualizationDefinitionCount = 0;
+const VisualizationDefinition* currentVisualizationDefinition = nullptr;
+
 WebServer* webServer;
+
+bool setCurrentVisualizationById(const char* id);
+const char* getCurrentVisualizationId();
+
+bool setCurrentVisualizationById(const char* id) {
+  const VisualizationDefinition* definition = findVisualization(id);
+  if (!definition) {
+    Serial.print("Unknown visualization requested: ");
+    Serial.println(id ? id : "(null)");
+    return false;
+  }
+  if (currentVisualizationDefinition == definition && currentVisualization != nullptr) {
+    return true;
+  }
+
+  Visualization* visualization = createVisualization(definition, display);
+  if (!visualization) {
+    Serial.print("Failed to create visualization: ");
+    Serial.println(definition->id);
+    return false;
+  }
+
+  if (currentVisualization != nullptr) {
+    delete currentVisualization;
+  }
+  display->clear();
+  currentVisualization = visualization;
+  currentVisualizationDefinition = definition;
+  Serial.print("Visualization set to ");
+  Serial.println(definition->id);
+  return true;
+}
+
+const char* getCurrentVisualizationId() {
+  if (currentVisualizationDefinition && currentVisualizationDefinition->id) {
+    return currentVisualizationDefinition->id;
+  }
+  return "";
+}
 
 void connectToWiFi(void) {
   WiFi.mode(WIFI_STA);
@@ -69,11 +114,15 @@ void setup() {
 
   ledMatrix = new LedMatrix();
   display = new Display();
-  currentVisualization = new Text("I luv u!", display);
-  // currentVisualization = new Columns(display, 50, true);
+  visualizationDefinitions = availableVisualizations(&visualizationDefinitionCount);
+  currentVisualizationDefinition = defaultVisualization();
+  currentVisualization = createVisualization(currentVisualizationDefinition, display);
+  if (currentVisualization == nullptr) {
+    Serial.println("Failed to create default visualization");
+  }
 
   connectToWiFi();
-  webServer = new WebServer(display, ledMatrix);
+  webServer = new WebServer(display, ledMatrix, visualizationDefinitions, visualizationDefinitionCount, setCurrentVisualizationById, getCurrentVisualizationId);
 }
 
 void loop() {
