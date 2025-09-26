@@ -15,6 +15,7 @@
 #include "Display.h"
 #include "Clock.h"
 #include "Columns.h"
+#include "Snow.h"
 #include "Text.h"
 #include "Visualization.h"
 #include "Visualizations.h"
@@ -34,6 +35,7 @@ WebServer* webServer;
 
 bool setCurrentVisualizationById(const char* id);
 const char* getCurrentVisualizationId();
+Visualization* getCurrentVisualizationInstance();
 
 bool setCurrentVisualizationById(const char* id) {
   const VisualizationDefinition* definition = findVisualization(id);
@@ -69,6 +71,10 @@ const char* getCurrentVisualizationId() {
     return currentVisualizationDefinition->id;
   }
   return "";
+}
+
+Visualization* getCurrentVisualizationInstance() {
+  return currentVisualization;
 }
 
 void connectToWiFi(void) {
@@ -122,7 +128,7 @@ void setup() {
   }
 
   connectToWiFi();
-  webServer = new WebServer(display, ledMatrix, visualizationDefinitions, visualizationDefinitionCount, setCurrentVisualizationById, getCurrentVisualizationId);
+  webServer = new WebServer(display, ledMatrix, visualizationDefinitions, visualizationDefinitionCount, setCurrentVisualizationById, getCurrentVisualizationId, getCurrentVisualizationInstance);
 }
 
 void loop() {

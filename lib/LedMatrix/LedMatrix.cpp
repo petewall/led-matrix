@@ -2,7 +2,7 @@
 #include "LedMatrix.h"
 #include <LedControl.h>
 
-#define DEFAULT_BRIGHTNESS 1
+#define DEFAULT_BRIGHTNESS 0
 
 LedControl lc(PIN_DIN, PIN_CLK, PIN_CS, NUM_DEVICES);
 

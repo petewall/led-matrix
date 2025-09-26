@@ -1,8 +1,11 @@
 #include "WebServer.h"
 #include "hardware.h"
 #include "LedMatrix.h"
+#include "Visualization.h"
+#include "Snow.h"
 
 #include <ESPAsyncWebServer.h>
+#include <stdlib.h>
 #if defined(ESP8266)
 #include <LittleFS.h>
 #elif defined(ESP32)
@@ -14,14 +17,16 @@ WebServer::WebServer(Display* display,
                      const VisualizationDefinition* visualizationDefinitions,
                      size_t visualizationDefinitionCount,
                      VisualizationSetter setVisualizationCallback,
-                     VisualizationGetter getCurrentVisualizationIdCallback)
+                     VisualizationGetter getCurrentVisualizationIdCallback,
+                     VisualizationAccessor getCurrentVisualizationCallback)
   : display(display),
     ledMatrix(ledMatrix),
     asyncWebServer(nullptr),
     visualizationDefinitions(visualizationDefinitions),
     visualizationDefinitionCount(visualizationDefinitionCount),
     setVisualizationCallback(setVisualizationCallback),
-    getCurrentVisualizationIdCallback(getCurrentVisualizationIdCallback)
+    getCurrentVisualizationIdCallback(getCurrentVisualizationIdCallback),
+    getCurrentVisualizationCallback(getCurrentVisualizationCallback)
 {
   asyncWebServer = new AsyncWebServer(80);
   // Mount LittleFS and serve static files from it (default to index.html)
@@ -68,6 +73,34 @@ WebServer::WebServer(Display* display,
   });
 
   // Set a pixel: PUT /display?x=..&y=..&on=0|1 (also accepts body params)
+  auto currentSnow = [this]() -> Snow* {
+    if (!this->getCurrentVisualizationIdCallback || !this->getCurrentVisualizationCallback) {
+      return nullptr;
+    }
+    const char* id = this->getCurrentVisualizationIdCallback();
+    if (!id) {
+      return nullptr;
+    }
+    if (String(id) != "snow") {
+      return nullptr;
+    }
+    Visualization* viz = this->getCurrentVisualizationCallback();
+    if (!viz) {
+      return nullptr;
+    }
+    return static_cast<Snow*>(viz);
+  };
+
+  auto snowConfigJson = [](Snow* snow) -> String {
+    String json = "{";
+    json += "\"gravity\":"; json += snow->getGravity(); json += ",";
+    json += "\"snowRate\":"; json += snow->getSnowRate(); json += ",";
+    json += "\"meltRate\":"; json += snow->getMeltRate(); json += ",";
+    json += "\"wind\":"; json += (int)snow->getWind();
+    json += "}";
+    return json;
+  };
+
   asyncWebServer->on("/display", HTTP_PUT, [this](AsyncWebServerRequest *request) {
     auto getParam = [&](const char* name) -> const AsyncWebParameter* {
       if (request->hasParam(name)) {
@@ -98,7 +131,23 @@ WebServer::WebServer(Display* display,
       return;
     }
 
-    bool changed = this->display->setPixel((uint8_t)x, (uint8_t)y, on);
+    bool vizHandled = false;
+    bool changed = false;
+    if (this->getCurrentVisualizationCallback) {
+      Visualization* viz = this->getCurrentVisualizationCallback();
+      if (viz) {
+        bool before = this->display->getPixel((uint8_t)x, (uint8_t)y);
+        if (viz->handlePixelChange((uint8_t)x, (uint8_t)y, on)) {
+          vizHandled = true;
+          bool after = this->display->getPixel((uint8_t)x, (uint8_t)y);
+          changed = (before != after);
+        }
+      }
+    }
+
+    if (!vizHandled) {
+      changed = this->display->setPixel((uint8_t)x, (uint8_t)y, on);
+    }
     String json = "{";
     json += "\"x\":"; json += x; json += ",";
     json += "\"y\":"; json += y; json += ",";
@@ -185,6 +234,63 @@ WebServer::WebServer(Display* display,
     }
     json += "\"}";
     request->send(200, "application/json", json);
+  });
+
+  asyncWebServer->on("/visualizations/snow/config", HTTP_GET, [this, currentSnow, snowConfigJson](AsyncWebServerRequest *request) {
+    Snow* snow = currentSnow();
+    if (!snow) {
+      request->send(409, "application/json", "{\"error\":\"snow visualization inactive\"}");
+      return;
+    }
+    request->send(200, "application/json", snowConfigJson(snow));
+  });
+
+  asyncWebServer->on("/visualizations/snow/config", HTTP_PUT, [this, currentSnow, snowConfigJson](AsyncWebServerRequest *request) {
+    Snow* snow = currentSnow();
+    if (!snow) {
+      request->send(409, "application/json", "{\"error\":\"snow visualization inactive\"}");
+      return;
+    }
+
+    auto getParam = [&](const char* name) -> const AsyncWebParameter* {
+      if (request->hasParam(name)) {
+        return request->getParam(name);
+      }
+      if (request->hasParam(name, true)) {
+        return request->getParam(name, true);
+      }
+      return nullptr;
+    };
+
+    bool updated = false;
+
+    if (const AsyncWebParameter* p = getParam("gravity")) {
+      unsigned long value = strtoul(p->value().c_str(), nullptr, 10);
+      snow->setGravity(value);
+      updated = true;
+    }
+    if (const AsyncWebParameter* p = getParam("snowRate")) {
+      unsigned long value = strtoul(p->value().c_str(), nullptr, 10);
+      snow->setSnowRate(value);
+      updated = true;
+    }
+    if (const AsyncWebParameter* p = getParam("meltRate")) {
+      unsigned long value = strtoul(p->value().c_str(), nullptr, 10);
+      snow->setMeltRate(value);
+      updated = true;
+    }
+    if (const AsyncWebParameter* p = getParam("wind")) {
+      unsigned long value = strtoul(p->value().c_str(), nullptr, 10);
+      snow->setWind((uint8_t)value);
+      updated = true;
+    }
+
+    if (!updated) {
+      request->send(400, "application/json", "{\"error\":\"no parameters provided\"}");
+      return;
+    }
+
+    request->send(200, "application/json", snowConfigJson(snow));
   });
 
   // Brightness endpoints

@@ -19,12 +19,15 @@
     "test": "test"
   },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "start-mock-led-matrix": "node test/mock-led-matrix/server.js"
   },
   "devDependencies": {
     "@linthtml/linthtml": "^0.10.2",
     "stylelint": "^16.24.0",
     "stylelint-config-standard": "^39.0.0"
   },
-  "dependencies": {}
+  "dependencies": {
+    "express": "^4.21.2"
+  }
 }

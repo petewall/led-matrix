@@ -13,13 +13,15 @@ class WebServer {
 public:
     using VisualizationSetter = bool (*)(const char* id);
     using VisualizationGetter = const char* (*)();
+    using VisualizationAccessor = Visualization* (*)();
 
     WebServer(Display* display,
               LedMatrix* ledMatrix,
               const VisualizationDefinition* visualizationDefinitions,
               size_t visualizationDefinitionCount,
               VisualizationSetter setVisualizationCallback,
-              VisualizationGetter getCurrentVisualizationIdCallback);
+              VisualizationGetter getCurrentVisualizationIdCallback,
+              VisualizationAccessor getCurrentVisualizationCallback);
 private:
     Display* display;
     LedMatrix* ledMatrix;
@@ -28,4 +30,5 @@ private:
     size_t visualizationDefinitionCount;
     VisualizationSetter setVisualizationCallback;
     VisualizationGetter getCurrentVisualizationIdCallback;
+    VisualizationAccessor getCurrentVisualizationCallback;
 };

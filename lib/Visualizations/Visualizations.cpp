@@ -4,6 +4,7 @@
 
 #include "Clock.h"
 #include "Columns.h"
+#include "Snow.h"
 #include "Text.h"
 
 namespace {
@@ -20,9 +21,14 @@ Visualization* createText(Display* display) {
   return new Text("HELLO", display);
 }
 
+Visualization* createSnow(Display* display) {
+  return new Snow(display);
+}
+
 constexpr VisualizationDefinition VISUALIZATION_DEFINITIONS[] = {
   {"clock", "Clock", createClock},
   {"columns", "Columns", createColumns},
+  {"snow", "Snow", createSnow},
   {"text", "Text", createText},
 };
 
@@ -71,4 +77,3 @@ Visualization* createVisualizationById(const char* id, Display* display) {
   }
   return createVisualization(definition, display);
 }
-

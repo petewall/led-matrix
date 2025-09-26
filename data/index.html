@@ -31,6 +31,31 @@
         <div id="visualizations"></div>
       </aside>
       <div id="grid"></div>
+      <aside id="viz-controls" hidden>
+        <h2>Snow</h2>
+        <div id="snow-controls" class="controls">
+          <div class="control-group">
+            <label for="snow-gravity">Gravity (ms)</label>
+            <input type="number" id="snow-gravity" data-snow-param="gravity" min="0" max="2000" step="10" />
+            <small>Time between downward steps. Set 0 to freeze snow in place.</small>
+          </div>
+          <div class="control-group">
+            <label for="snow-snowRate">Snow Rate (ms)</label>
+            <input type="number" id="snow-snowRate" data-snow-param="snowRate" min="0" max="5000" step="50" />
+            <small>Lower values create flakes more frequently. 0 disables new snow.</small>
+          </div>
+          <div class="control-group">
+            <label for="snow-meltRate">Melt Rate (ms)</label>
+            <input type="number" id="snow-meltRate" data-snow-param="meltRate" min="0" max="10000" step="100" />
+            <small>Lower values melt faster. 0 disables melting.</small>
+          </div>
+          <div class="control-group">
+            <label for="snow-wind">Wind (%)</label>
+            <input type="range" id="snow-wind" data-snow-param="wind" min="0" max="100" step="1" />
+            <div class="value"><span id="snow-wind-value">0%</span></div>
+          </div>
+        </div>
+      </aside>
     </main>
     <script>
       let cols = 0, rows = 0;
@@ -45,11 +70,20 @@
       let visualizations = [];
       let currentVisualizationId = '';
       let switchingVisualization = false;
+      let snowConfig = null;
+      let snowUpdateTimer = null;
 
       const $ = (s) => document.querySelector(s);
       const grid = $("#grid");
       const statusEl = $("#status");
       const visualizationList = $("#visualizations");
+      const vizControls = $("#viz-controls");
+      const snowControls = $("#snow-controls");
+      const snowGravityInput = $("#snow-gravity");
+      const snowRateInput = $("#snow-snowRate");
+      const snowMeltRateInput = $("#snow-meltRate");
+      const snowWindInput = $("#snow-wind");
+      const snowWindValue = $("#snow-wind-value");
 
       function setStatus(text) { statusEl.textContent = text; }
 
@@ -74,6 +108,7 @@
           button.addEventListener('click', () => selectVisualization(viz.id));
           visualizationList.appendChild(button);
         });
+        ensureVisualizationControls();
       }
 
       async function loadVisualizations() {
@@ -85,6 +120,7 @@
           visualizations = Array.isArray(data.visualizations) ? data.visualizations : [];
           currentVisualizationId = data.current || '';
           renderVisualizationPalette();
+          ensureVisualizationControls();
         } catch (e) {
           // ignore failures; palette will remain unchanged
         }
@@ -102,6 +138,7 @@
           const data = await r.json();
           currentVisualizationId = data.current || id;
           await refresh();
+          await ensureVisualizationControls();
         } catch (e) {
           setStatus('Failed to change visualization');
           await loadVisualizations();
@@ -109,6 +146,91 @@
           switchingVisualization = false;
           renderVisualizationPalette();
         }
+      }
+
+      async function fetchSnowConfig() {
+        try {
+          const r = await fetch('/visualizations/snow/config', { cache: 'no-store' });
+          if (!r.ok) throw new Error('failed');
+          snowConfig = await r.json();
+          updateSnowControlsUI();
+        } catch (e) {
+          snowConfig = null;
+        }
+      }
+
+      function updateSnowControlsUI() {
+        if (!snowControls || !snowConfig) return;
+        if (snowGravityInput && typeof snowConfig.gravity === 'number') snowGravityInput.value = snowConfig.gravity;
+        if (snowRateInput && typeof snowConfig.snowRate === 'number') snowRateInput.value = snowConfig.snowRate;
+        if (snowMeltRateInput && typeof snowConfig.meltRate === 'number') snowMeltRateInput.value = snowConfig.meltRate;
+        if (snowWindInput && typeof snowConfig.wind === 'number') {
+          snowWindInput.value = snowConfig.wind;
+          if (snowWindValue) snowWindValue.textContent = `${snowConfig.wind}%`;
+        }
+      }
+
+      async function ensureVisualizationControls() {
+        if (!vizControls) return;
+        if (currentVisualizationId === 'snow') {
+          vizControls.hidden = false;
+          if (!snowConfig) {
+            await fetchSnowConfig();
+          } else {
+            updateSnowControlsUI();
+          }
+        } else {
+          vizControls.hidden = true;
+          snowConfig = null;
+        }
+      }
+
+      function scheduleSnowUpdate(name, value) {
+        if (currentVisualizationId !== 'snow') return;
+        const num = Number(value);
+        if (Number.isNaN(num)) return;
+        if (!snowConfig) snowConfig = {};
+        let numeric = Math.max(0, Math.round(num));
+        if (name === 'wind') {
+          numeric = Math.max(0, Math.min(100, numeric));
+        }
+        snowConfig[name] = numeric;
+        updateSnowControlsUI();
+        if (snowUpdateTimer) {
+          clearTimeout(snowUpdateTimer);
+        }
+        snowUpdateTimer = setTimeout(async () => {
+          if (!snowConfig) return;
+          try {
+            const params = new URLSearchParams();
+            ['gravity', 'snowRate', 'meltRate', 'wind'].forEach((key) => {
+              if (snowConfig[key] !== undefined && snowConfig[key] !== null) {
+                params.set(key, snowConfig[key]);
+              }
+            });
+            const r = await fetch(`/visualizations/snow/config?${params.toString()}`, { method: 'PUT' });
+            if (!r.ok) throw new Error('failed');
+            snowConfig = await r.json();
+            updateSnowControlsUI();
+          } catch (e) {
+            await fetchSnowConfig();
+          }
+        }, 200);
+      }
+
+      if (snowControls) {
+        snowControls.addEventListener('change', (e) => {
+          if (!e.target || !e.target.dataset) return;
+          const param = e.target.dataset.snowParam;
+          if (!param) return;
+          scheduleSnowUpdate(param, e.target.value);
+        });
+      }
+
+      if (snowWindInput && snowWindValue) {
+        snowWindInput.addEventListener('input', (e) => {
+          snowWindValue.textContent = `${e.target.value}%`;
+        });
       }
 
       async function getDisplay() {
